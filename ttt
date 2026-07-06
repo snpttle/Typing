@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>뉴모피즘 타자 연습 시스템 - Wood Edition</title>
+    <!-- CDN 장애를 대비해 스크립트 로드 확인 필요 -->
+    <script src="https://unpkg.com/hangul-js"></script>
+    <style>
+        :root {
+            --bg-color: #e0e5ec;
+            --key-shadow-dark: #bec3c9;
+            --key-shadow-light: #ffffff;
+            --font-kor: #5a5a5a;
+            --font-eng: #b0b0b0;
+            --accent-blue: #3498db;
+            --shift-active-bg: #d1d9e6; 
+        }
+
+        body {
+            background-color: var(--bg-color);
+            display: flex; flex-direction: column; 
+            justify-content: space-evenly; align-items: center;
+            min-height: 100vh; margin: 0; padding: 10px 0;
+            font-family: 'Malgun Gothic', sans-serif;
+            overflow: hidden; box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .dashboard {
+            width: 95%; max-width: 1100px; 
+            display: flex; justify-content: center; gap: 8px; 
+        }
+        .stat-card {
+            flex: 1; min-width: 80px;
+            background: var(--bg-color); padding: 8px 5px; border-radius: 12px; text-align: center;
+            box-shadow: 4px 4px 8px var(--key-shadow-dark), -4px -4px 8px var(--key-shadow-light);
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+        }
+        .stat-label { font-size: 10px; color: #888; font-weight: bold; }
+        .stat-value { font-size: 14px; color: var(--accent-blue); font-weight: bold; white-space: nowrap; }
+
+        .sentence-box {
+            width: 90%; max-width: 1100px; background-color: var(--bg-color); 
+            padding: 20px 30px; border-radius: 20px;
+            box-shadow: inset 6px 6px 12px var(--key-shadow-dark), inset -6px -6px 12px var(--key-shadow-light);
+            text-align: center;
+        }
+        #target-display { font-size: clamp(18px, 4vh, 26px); margin-bottom: 10px; line-height: 1.4; color: #aaa; white-space: pre-wrap; }
+        .char.correct { color: #333; }
+        .char.wrong { color: #e74c3c; background-color: #ffcccc; border-radius: 4px; }
+        .char.pending { color: var(--accent-blue); border-bottom: 3px solid var(--accent-blue); }
+
+        .input-wrapper {
+            position: relative; display: inline-flex; justify-content: center; align-items: center;
+            width: 100%; border-bottom: 2px solid var(--accent-blue);
+        }
+        #input-display { font-size: clamp(16px, 3vh, 22px); color: var(--accent-blue); min-height: 1.2em; white-space: pre; display: flex; align-items: center; }
+        .cursor { width: 2px; height: 1.1em; background-color: var(--accent-blue); margin-left: 2px; animation: blink 1.2s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        .keyboard-container {
+            width: 100%; display: flex; justify-content: center; align-items: center; padding: 5px 0; flex-grow: 1;
+        }
+        .keyboard { 
+            background-color: var(--bg-color); padding: 20px; border-radius: 30px; 
+            box-shadow: 15px 15px 35px var(--key-shadow-dark), -15px -15px 35px var(--key-shadow-light); 
+            width: 950px; transform-origin: center center; transition: transform 0.2s ease-out;
+            touch-action: none;
+        }
+        .row { display: flex; margin-bottom: 8px; gap: 8px; }
+        .row-2 { padding-left: 25px; } .row-3 { padding-left: 40px; } .row-4 { padding-left: 60px; }
+
+        .key {
+            height: 58px; min-width: 58px; position: relative; border-radius: 12px;
+            background-color: var(--bg-color); border: none; cursor: pointer;
+            box-shadow: 5px 5px 10px var(--key-shadow-dark), -5px -5px 10px var(--key-shadow-light);
+            transition: all 0.1s ease; outline: none; -webkit-tap-highlight-color: transparent;
+        }
+        .key:active { box-shadow: inset 3px 3px 6px var(--key-shadow-dark), inset -3px -3px 6px var(--key-shadow-light); transform: scale(0.96); }
+        .key.shift-active { background-color: var(--shift-active-bg); }
+
+        .kor { position: absolute; bottom: 6px; right: 10px; font-size: 17px; font-weight: bold; color: var(--font-kor); }
+        .eng { position: absolute; top: 6px; left: 8px; font-size: 11px; color: var(--font-eng); }
+        .special-text { position: absolute; bottom: 6px; right: 10px; font-size: 11px; color: #888; font-weight: bold; }
+        
+        .backspace { width: 100px; } .tab { width: 80px; } .caps { width: 95px; } 
+        .enter { width: 110px; background-color: #d1d9e6; }
+        .shift-l, .shift-r { width: 125px; } .space { width: 450px; } .ctrl, .alt, .win { width: 70px; }
+
+        #result-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(224, 229, 236, 0.98); display: none; justify-content: center; align-items: center; z-index: 9999;
+        }
+        .result-card {
+            background: var(--bg-color); padding: 40px; border-radius: 40px;
+            box-shadow: 20px 20px 60px var(--key-shadow-dark), -20px -20px 60px var(--key-shadow-light);
+            text-align: center; width: 80%; max-width: 400px; transform: scale(0.8); opacity: 0; transition: 0.5s;
+        }
+        .result-card.show { transform: scale(1); opacity: 1; }
+        .stat-group { display: flex; flex-direction: column; gap: 15px; margin: 25px 0; }
+        .stat-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 20px; border-radius: 15px;
+            box-shadow: inset 4px 4px 8px var(--key-shadow-dark), inset -4px -4px 8px var(--key-shadow-light);
+        }
+        .res-value { color: var(--accent-blue); font-size: 22px; font-weight: bold; }
+        .restart-btn {
+            background-color: var(--bg-color); border: none; padding: 15px 40px; border-radius: 50px;
+            box-shadow: 6px 6px 12px var(--key-shadow-dark), -6px -6px 12px var(--key-shadow-light);
+            font-weight: bold; cursor: pointer; width: 100%; color: #5a5a5a;
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+<div class="dashboard">
+    <div class="stat-card"><span class="stat-label">진행</span><span id="stat-progress" class="stat-value">1 / 10</span></div>
+    <div class="stat-card"><span class="stat-label">타수</span><span id="stat-wpm" class="stat-value">0</span></div>
+    <div class="stat-card"><span class="stat-label">정확도</span><span id="stat-acc" class="stat-value">0%</span></div>
+    <div class="stat-card"><span class="stat-label">점수</span><span id="stat-score" class="stat-value">0</span></div>
+</div>
+
+<div class="sentence-box">
+    <div id="target-display"></div>
+    <div class="input-wrapper">
+        <div id="input-display"></div>
+        <div class="cursor"></div>
+    </div>
+</div>
+
+<div class="keyboard-container" id="kb-container">
+    <div class="keyboard" id="kb-ui">
+        <div class="row row-1">
+            <div class="key" onclick="vInput('1')"><span class="eng">!</span><span class="kor">1</span></div>
+            <div class="key" onclick="vInput('2')"><span class="eng">@</span><span class="kor">2</span></div>
+            <div class="key" onclick="vInput('3')"><span class="eng">#</span><span class="kor">3</span></div>
+            <div class="key" onclick="vInput('4')"><span class="eng">$</span><span class="kor">4</span></div>
+            <div class="key" onclick="vInput('5')"><span class="eng">%</span><span class="kor">5</span></div>
+            <div class="key" onclick="vInput('6')"><span class="eng">^</span><span class="kor">6</span></div>
+            <div class="key" onclick="vInput('7')"><span class="eng">&amp;</span><span class="kor">7</span></div>
+            <div class="key" onclick="vInput('8')"><span class="eng">*</span><span class="kor">8</span></div>
+            <div class="key" onclick="vInput('9')"><span class="eng">(</span><span class="kor">9</span></div>
+            <div class="key" onclick="vInput('0')"><span class="eng">)</span><span class="kor">0</span></div>
+            <div class="key" onclick="vInput('-')"><span class="eng">_</span><span class="kor">-</span></div>
+            <div class="key" onclick="vInput('=')"><span class="eng">+</span><span class="kor">=</span></div>
+            <div class="key backspace" id="del-btn"><span class="special-text">Del</span></div>
+        </div>
+        <div class="row row-2">
+            <div class="key tab"><span class="special-text">Tab</span></div>
+            <div class="key char-key" data-normal="ㅂ" data-shift="ㅃ" onclick="vInput(this)"><span class="eng">Q</span><span class="kor">ㅂ</span></div>
+            <div class="key char-key" data-normal="ㅈ" data-shift="ㅉ" onclick="vInput(this)"><span class="eng">W</span><span class="kor">ㅈ</span></div>
+            <div class="key char-key" data-normal="ㄷ" data-shift="ㄸ" onclick="vInput(this)"><span class="eng">E</span><span class="kor">ㄷ</span></div>
+            <div class="key char-key" data-normal="ㄱ" data-shift="ㄲ" onclick="vInput(this)"><span class="eng">R</span><span class="kor">ㄱ</span></div>
+            <div class="key char-key" data-normal="ㅅ" data-shift="ㅆ" onclick="vInput(this)"><span class="eng">T</span><span class="kor">ㅅ</span></div>
+            <div class="key char-key" data-normal="ㅛ" data-shift="ㅛ" onclick="vInput(this)"><span class="eng">Y</span><span class="kor">ㅛ</span></div>
+            <div class="key char-key" data-normal="ㅕ" data-shift="ㅕ" onclick="vInput(this)"><span class="eng">U</span><span class="kor">ㅕ</span></div>
+            <div class="key char-key" data-normal="ㅑ" data-shift="ㅑ" onclick="vInput(this)"><span class="eng">I</span><span class="kor">ㅑ</span></div>
+            <div class="key char-key" data-normal="ㅐ" data-shift="ㅒ" onclick="vInput(this)"><span class="eng">O</span><span class="kor">ㅐ</span></div>
+            <div class="key char-key" data-normal="ㅔ" data-shift="ㅖ" onclick="vInput(this)"><span class="eng">P</span><span class="kor">ㅔ</span></div>
+            <div class="key" onclick="vInput('[')"><span class="eng">{</span><span class="kor">[</span></div>
+            <div class="key" onclick="vInput(']')"><span class="eng">}</span><span class="kor">]</span></div>
+        </div>
+        <div class="row row-3">
+            <div class="key caps"><span class="special-text">Caps</span></div>
+            <div class="key" onclick="vInput('ㅁ')"><span class="eng">A</span><span class="kor">ㅁ</span></div>
+            <div class="key" onclick="vInput('ㄴ')"><span class="eng">S</span><span class="kor">ㄴ</span></div>
+            <div class="key" onclick="vInput('ㅇ')"><span class="eng">D</span><span class="kor">ㅇ</span></div>
+            <div class="key" onclick="vInput('ㄹ')"><span class="eng">F</span><span class="kor">ㄹ</span></div>
+            <div class="key" onclick="vInput('ㅎ')"><span class="eng">G</span><span class="kor">ㅎ</span></div>
+            <div class="key" onclick="vInput('ㅗ')"><span class="eng">H</span><span class="kor">ㅗ</span></div>
+            <div class="key" onclick="vInput('ㅓ')"><span class="eng">J</span><span class="kor">ㅓ</span></div>
+            <div class="key" onclick="vInput('ㅏ')"><span class="eng">K</span><span class="kor">ㅏ</span></div>
+            <div class="key" onclick="vInput('ㅣ')"><span class="eng">L</span><span class="kor">ㅣ</span></div>
+            <div class="key" onclick="vInput(';')"><span class="eng">:</span><span class="kor">;</span></div>
+            <div class="key enter" onclick="handleEnter()"><span class="special-text" style="color:#333">Enter</span></div>
+        </div>
+        <div class="row row-4">
+            <div class="key shift-btn shift-l" onclick="toggleShift()"><span class="special-text">Shift</span></div>
+            <div class="key" onclick="vInput('ㅋ')"><span class="eng">Z</span><span class="kor">ㅋ</span></div>
+            <div class="key" onclick="vInput('ㅌ')"><span class="eng">X</span><span class="kor">ㅌ</span></div>
+            <div class="key" onclick="vInput('ㅊ')"><span class="eng">C</span><span class="kor">ㅊ</span></div>
+            <div class="key" onclick="vInput('ㅍ')"><span class="eng">V</span><span class="kor">ㅍ</span></div>
+            <div class="key" onclick="vInput('ㅠ')"><span class="eng">B</span><span class="kor">ㅠ</span></div>
+            <div class="key" onclick="vInput('ㅜ')"><span class="eng">N</span><span class="kor">ㅜ</span></div>
+            <div class="key" onclick="vInput('ㅡ')"><span class="eng">M</span><span class="kor">ㅡ</span></div>
+            <div class="key" onclick="vInput(',')"><span class="eng">&lt;</span><span class="kor">,</span></div>
+            <div class="key" onclick="vInput('.')"><span class="eng">&gt;</span><span class="kor">.</span></div>
+            <div class="key" onclick="vInput('/')"><span class="eng">?</span><span class="kor">/</span></div>
+            <div class="key shift-btn shift-r" onclick="toggleShift()"><span class="special-text">Shift</span></div>
+        </div>
+        <div class="row row-5">
+            <div class="key ctrl"><span class="special-text">Ctrl</span></div>
+            <div class="key win"><span class="special-text">Win</span></div>
+            <div class="key alt"><span class="special-text">Alt</span></div>
+            <div class="key space" onclick="vInput(' ')"></div>
+            <div class="key alt"><span class="special-text">한/영</span></div>
+            <div class="key ctrl"><span class="special-text">Ctrl</span></div>
+        </div>
+    </div>
+</div>
+
+<div id="result-overlay">
+    <div class="result-card" id="resultCard">
+        <h1>🎉 연습 완료!</h1>
+        <div class="stat-group">
+            <div class="stat-item"><span class="res-label">평균 타수</span><span class="res-value" id="res-wpm">0 타</span></div>
+            <div class="stat-item"><span class="res-label">정확도</span><span class="res-value" id="res-acc">0%</span></div>
+            <div class="stat-item"><span class="res-label">총 득점</span><span class="res-value" id="res-score">0</span></div>
+        </div>
+        <button class="restart-btn" onclick="resetGame()">다시 시작</button>
+    </div>
+</div>
+
+<script>
+    // 브라우저 정책 우회를 위해 오디오 컨텍스트는 첫 인터랙션 시 생성되도록 변경
+    let audioCtx = null;
+    
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+    
+    function playClickSound() {
+        initAudio();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle'; 
+        osc.frequency.setValueAtTime(120, now); 
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        const click = audioCtx.createOscillator();
+        const clickGain = audioCtx.createGain();
+        click.type = 'sine';
+        click.frequency.setValueAtTime(1200, now);
+        clickGain.gain.setValueAtTime(0.05, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        click.connect(clickGain); clickGain.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.1);
+        click.start(now); click.stop(now + 0.02);
+    }
+
+    function playEnterSound() {
+        initAudio();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(now); osc.stop(now + 0.15);
+    }
+
+    function playEndSound() {
+        initAudio();
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const melody = [523.25, 659.25, 783.99, 1046.50];
+        melody.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + (i * 0.1));
+            gain.gain.setValueAtTime(0.1, now + (i * 0.1));
+            gain.gain.exponentialRampToValueAtTime(0.001, now + (i * 0.1) + 0.4);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now + (i * 0.1)); osc.stop(now + (i * 0.1) + 0.4);
+        });
+    }
+
+    const sentences = [
+        "어두운 밤하늘에 반짝이는 별들이 참 아름다워요.",
+        "매일 조금씩 꾸준히 연습하면 무엇이든 잘할 수 있어요.",
+        "행복은 멀리 있는 것이 아니라 우리 주변의 작은 일상에 있어요.",
+        "친절한 말 한마디가 누군가에게는 큰 위로가 될 수 있어요.",
+        "지치고 힘들 때는 잠시 멈추어 하늘을 바라보며 쉬어가세요.",
+        "자연은 우리에게 아낌없이 모든 것을 내어주는 고마운 존재입니다.",
+        "책 속에는 우리가 몰랐던 넓고 신비로운 세상이 가득합니다.",
+        "아름다운 노을이 물드는 저녁 풍경이 마음을 차분하게 하네요.",
+        "우리는 서로 돕고 살아야 행복한 세상을 만들 수 있습니다.",
+        "따뜻한 햇살 아래 피어난 꽃들이 봄이 왔음을 알려주네요."
+    ];
+
+    let currentIdx = 0, composition = [], startTime = null;
+    let totalJaso = 0, totalTime = 0, totalScore = 0, accHistory = [], isShift = false;
+
+    const kbUi = document.getElementById('kb-ui'), kbContainer = document.getElementById('kb-container');
+    const targetDisplay = document.getElementById('target-display'), inputDisplay = document.getElementById('input-display');
+    const statProgress = document.getElementById('stat-progress'), statWpm = document.getElementById('stat-wpm');
+    const statAcc = document.getElementById('stat-acc'), statScore = document.getElementById('stat-score');
+
+    function resizeKeyboard() {
+        const containerWidth = window.innerWidth * 0.96;
+        const containerHeight = kbContainer.offsetHeight * 0.95;
+        const finalScale = Math.min(containerWidth / 950, containerHeight / 360, 1);
+        kbUi.style.transform = `scale(${finalScale})`;
+    }
+    window.addEventListener('resize', resizeKeyboard);
+    window.addEventListener('load', resizeKeyboard);
+
+    function loadSentence() {
+        // Hangul 라이브러리 정상 로드 체크 안전장치
+        if (typeof Hangul === 'undefined') {
+            targetDisplay.innerText = "라이브러리 로딩 중입니다. 잠시만 기다리시거나 새로고침 해주세요.";
+            return;
+        }
+        if (currentIdx < sentences.length) {
+            targetDisplay.innerHTML = sentences[currentIdx].split('').map(char => `<span class="char">${char}</span>`).join('');
+            inputDisplay.innerText = ""; composition = []; startTime = null;
+            statProgress.innerText = `${currentIdx + 1} / ${sentences.length}`;
+            statWpm.innerText = "0"; statAcc.innerText = "0%";
+            resizeKeyboard();
+        } else { showFinalResult(); }
+    }
+
+    function resetGame() {
+        currentIdx = 0; totalJaso = 0; totalTime = 0; totalScore = 0; accHistory = [];
+        statScore.innerText = "0";
+        document.getElementById('resultCard').classList.remove('show');
+        setTimeout(() => {
+            document.getElementById('result-overlay').style.display = 'none';
+            loadSentence();
+        }, 300);
+    }
+
+    function toggleShift() {
+        isShift = !isShift;
+        document.querySelectorAll('.shift-btn').forEach(b => isShift ? b.classList.add('shift-active') : b.classList.remove('shift-active'));
+        document.querySelectorAll('.char-key').forEach(k => {
+            const korSpan = k.querySelector('.kor');
+            korSpan.innerText = isShift ? k.getAttribute('data-shift') : k.getAttribute('data-normal');
+        });
+    }
+
+    function vInput(keyOrChar) {
+        if (typeof Hangul === 'undefined') return;
+        playClickSound();
+        if (!startTime) startTime = new Date();
+        
+        let char = "";
+        const isObject = typeof keyOrChar === 'object';
+        
+        if (isObject) {
+            char = isShift ? keyOrChar.getAttribute('data-shift') : keyOrChar.getAttribute('data-normal');
+            if (isShift) toggleShift();
+        } else {
+            char = keyOrChar;
+            if (isShift && char !== 'Del') toggleShift();
+        }
+
+        if (char === 'Del') {
+            composition.pop();
+        } else {
+            composition.push(char);
+        }
+        
+        const currentText = Hangul.assemble(composition);
+        inputDisplay.innerText = currentText;
+        updateFeedback(currentText); calculateStats(currentText);
+    }
+
+    function updateFeedback(inputText) {
+        const spans = targetDisplay.querySelectorAll('.char'), targetText = sentences[currentIdx];
+        spans.forEach((span, i) => {
+            if (i < inputText.length) {
+                if (targetText[i] === inputText[i]) span.className = 'char correct';
+                else {
+                    const tD = Hangul.disassemble(targetText[i] || ""), iD = Hangul.disassemble(inputText[i] || "");
+                    let isGhost = false;
+                    if (targetText[i+1]) {
+                        const nextTD = Hangul.disassemble(targetText[i+1]);
+                        if (iD[0] === tD[0] && iD[1] === tD[1] && iD[2] === nextTD[0] && iD.length === 3) isGhost = true;
+                    }
+                    if (isGhost) span.className = 'char pending';
+                    else span.className = iD.every((v, idx) => v === tD[idx]) ? 'char pending' : 'char wrong';
+                }
+            } else span.className = 'char';
+        });
+    }
+
+    function calculateStats(inputText) {
+        const targetText = sentences[currentIdx];
+        let correctCount = 0;
+        for(let i=0; i<inputText.length; i++) if(inputText[i] === targetText[i]) correctCount++;
+        statAcc.innerText = (inputText.length > 0 ? Math.floor((correctCount / inputText.length) * 100) : 0) + "%";
+        const duration = (new Date() - startTime) / 1000 / 60;
+        const jaso = Hangul.disassemble(inputText).length;
+        let wpm = duration > 0 ? Math.floor(jaso / duration) : 0;
+        statWpm.innerText = wpm > 2000 ? 0 : wpm;
+    }
+
+    function handleEnter() {
+        if (typeof Hangul === 'undefined') return;
+        playEnterSound();
+        const finalInp = inputDisplay.innerText, target = sentences[currentIdx];
+        let correct = 0;
+        finalInp.split('').forEach((c, i) => { if (c === target[i]) correct++; });
+        accHistory.push(target.length > 0 ? Math.floor((correct / target.length) * 100) : 0);
+        totalJaso += Hangul.disassemble(finalInp).length;
+        totalTime += startTime ? (new Date() - startTime) / 1000 / 60 : 0;
+        let curWpm = parseInt(statWpm.innerText) || 0;
+        totalScore += Math.floor(curWpm * (accHistory[accHistory.length-1] / 100));
+        statScore.innerText = totalScore;
+        currentIdx++; 
+        loadSentence();
+    }
+
+    function showFinalResult() {
+        playEndSound();
+        document.getElementById('res-wpm').innerText = (totalTime > 0 ? Math.floor(totalJaso / totalTime) : 0) + " 타";
+        document.getElementById('res-acc').innerText = (accHistory.length > 0 ? Math.floor(accHistory.reduce((a, b) => a + b) / accHistory.length) : 0) + "%";
+        document.getElementById('res-score').innerText = totalScore.toLocaleString();
+        document.getElementById('result-overlay').style.display = 'flex';
+        setTimeout(() => document.getElementById('resultCard').classList.add('show'), 100);
+    }
+
+    // --- Del 키 연속 삭제 로직 ---
+    let deleteTimer = null;
+    let deleteInterval = null;
+    const delBtn = document.getElementById('del-btn');
+
+    function startContinuousDelete() {
+        vInput('Del');
+        deleteTimer = setTimeout(() => {
+            deleteInterval = setInterval(() => {
+                if (composition.length > 0) {
+                    vInput('Del');
+                } else {
+                    stopContinuousDelete();
+                }
+            }, 80);
+        }, 500);
+    }
+
+    function stopContinuousDelete() {
+        clearTimeout(deleteTimer);
+        clearInterval(deleteInterval);
+    }
+
+    delBtn.addEventListener('mousedown', (e) => { e.preventDefault(); startContinuousDelete(); });
+    delBtn.addEventListener('mouseup', stopContinuousDelete);
+    delBtn.addEventListener('mouseleave', stopContinuousDelete);
+    delBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startContinuousDelete(); }, { passive: false });
+    delBtn.addEventListener('touchend', stopContinuousDelete);
+
+    // DOM 생성 완료 직후 라이브러리 체크 후 실행
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(loadSentence, 300); // 라이브러리가 완전히 연동될 시간을 조금 줌
+    });
+</script>
+</body>
+</html>
